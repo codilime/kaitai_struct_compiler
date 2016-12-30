@@ -5,19 +5,19 @@ import io.kaitai.struct.exprlang.Ast.expr
 import io.kaitai.struct.exprlang.DataType._
 import io.kaitai.struct.format._
 import io.kaitai.struct.languages.components._
-import io.kaitai.struct.translators.{BaseTranslator, CppTranslator, TypeProvider}
+import io.kaitai.struct.translators.{BaseTranslator, CppVelesTranslator, TypeProvider}
 import io.kaitai.struct.{ClassCompiler, LanguageOutputWriter, RuntimeConfig, TypeProcessor}
 
-class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: LanguageOutputWriter)
+class CppVelesCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: LanguageOutputWriter, outMainHdr: LanguageOutputWriter)
   extends LanguageCompiler(config, outSrc)
     with ObjectOrientedLanguage
     with AllocateAndStoreIO
     with FixedContentsUsingArrayByteLiteral
     with UniversalDoc
     with EveryReadIsExpression {
-  import CppCompiler._
+  import CppVelesCompiler._
 
-  override def getStatic = CppCompiler
+  override def getStatic = CppVelesCompiler
 
   sealed trait AccessMode
   case object PrivateAccess extends AccessMode
@@ -28,10 +28,12 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
   override def fileHeader(topClassName: String): Unit = {
     outSrc.puts(s"// $headerComment")
     outSrc.puts
-    outSrc.puts("#include \"" + outFileName(topClassName) + ".h\"")
+    outSrc.puts("#include \"kaitai/" + outFileName(topClassName) + ".h\"")
     outSrc.puts
-    outSrc.puts("#include <iostream>")
-    outSrc.puts("#include <fstream>")
+    
+    outSrc.puts("namespace veles {")
+    outSrc.puts("namespace kaitai {")
+    outSrc.puts("namespace "+topClassName+" {")
 
     outHdr.puts(s"#ifndef ${defineName(topClassName)}")
     outHdr.puts(s"#define ${defineName(topClassName)}")
@@ -43,12 +45,47 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
     outHdr.puts
     outHdr.puts("#include <stdint.h>")
     outHdr.puts("#include <vector>") // TODO: add only if required
-    outHdr.puts("#include <sstream>") // TODO: add only if required
+    
+    outHdr.puts("namespace veles {")
+    outHdr.puts("namespace kaitai {")
+    outHdr.puts("namespace "+outFileName(topClassName)+" {")
+    
+    
+    outMainHdr.puts("#include \"parser/parser.h\"")
+    outMainHdr.puts(s"""#include \"kaitai/${topClassName}.h\"""")
+    outMainHdr.puts("namespace veles {")
+    outMainHdr.puts("namespace kaitai {")
+    outMainHdr.puts(s"class ${topClassName.capitalize}Parser : public parser::Parser {")
+    outMainHdr.puts(s"public:")
+    outMainHdr.inc
+    outMainHdr.puts(s"""${topClassName.capitalize}Parser() : parser::Parser(\"${topClassName} (ksy)\") {}""")
+    outMainHdr.puts(s"void parse(dbif::ObjectHandle blob, uint64_t start = 0, ")
+    outMainHdr.puts(s"dbif::ObjectHandle parent_chunk = dbif::ObjectHandle()) override {")
+    outMainHdr.inc
+    outMainHdr.puts(s"auto stream = kaitai::kstream(blob, start, parent_chunk);")
+    outMainHdr.puts(s"auto parser = kaitai::${topClassName}::${topClassName}_t(&stream);")
+    
   }
 
   override def fileFooter(topClassName: String): Unit = {
     outHdr.puts
+    outHdr.puts("} // namespace " + topClassName)
+    outHdr.puts("} // namespace kaitai")
+    outHdr.puts("} // namespace veles")
     outHdr.puts(s"#endif  // ${defineName(topClassName)}")
+    
+    outSrc.puts("} // namespace " + topClassName)
+    outSrc.puts("} // namespace kaitai")
+    outSrc.puts("} // namespace veles")
+    
+    
+    outMainHdr.dec
+    outMainHdr.puts(s"}")
+    outMainHdr.dec
+    outMainHdr.puts(s"};")
+    outMainHdr.puts
+    outMainHdr.puts("} // namespace kaitai")
+    outMainHdr.puts("} // namespace veles")
   }
 
   override def opaqueClassDeclaration(classSpec: ClassSpec): Unit = {
@@ -93,6 +130,8 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
       s"${type2class(parentClassName)}* p_parent = 0, " +
       s"${type2class(rootClassName)}* p_root = 0);"
     )
+    outHdr.puts("veles::dbif::ObjectHandle veles_obj;")
+
 
     outSrc.puts
     outSrc.puts(s"${type2class(name)}::${type2class(List(name.last))}(" +
@@ -107,9 +146,14 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
     } else {
       "p_root"
     })
+    
+     outSrc.puts(s"""veles_obj = $normalIO->startChunk(\"${name.last}\");""");
   }
 
   override def classConstructorFooter: Unit = {
+    
+    outSrc.puts(s"$normalIO->endChunk();");
+    
     outSrc.dec
     outSrc.puts("}")
   }
@@ -118,11 +162,14 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
     outHdr.puts(s"~${type2class(List(name.last))}();")
 
     outSrc.puts
-    outSrc.puts(s"${type2class(name)}::~${type2class(List(name.last))}() {")
+    outSrc.puts(s"${type2class(name)}::~${type2class(List(name.last))}() { ")
     outSrc.inc
   }
-
-  override def classDestructorFooter = classConstructorFooter
+  
+  override def classDestructorFooter: Unit = {
+    outSrc.dec
+    outSrc.puts("}")
+  }
 
   override def attributeDeclaration(attrName: Identifier, attrType: BaseType, condSpec: ConditionalSpec): Unit = {
     ensureMode(PrivateAccess)
@@ -232,8 +279,11 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
     }
   }
 
-  override def attrFixedContentsParse(attrName: Identifier, contents: String): Unit =
+  override def attrFixedContentsParse(attrName: Identifier, contents: String): Unit = {
+    outSrc.puts(s"""$normalIO->pushName(\"${privateMemberName(attrName)}\"  + 2);""")
     outSrc.puts(s"${privateMemberName(attrName)} = $normalIO->ensure_fixed_contents($contents);")
+    outSrc.puts(s"""$normalIO->popName();""")
+  }
 
   override def attrProcess(proc: ProcessExpr, varSrc: Identifier, varDest: Identifier): Unit = {
     val srcName = privateMemberName(varSrc)
@@ -268,7 +318,9 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
       case NoRepeat => memberName
     }
 
-    outSrc.puts(s"${privateMemberName(ioName)} = new $kstreamName($args);")
+    outSrc.puts(s"""$normalIO->pushName(\"${args}\" + 3);""")
+    outSrc.puts(s"${privateMemberName(ioName)} = new $kstreamName($normalIO->blob(), $normalIO->pos() - ${args}.size(), veles_obj, $normalIO->pos(), m__io->error());")
+    outSrc.puts(s"$normalIO->popName();")
     ioName
   }
 
@@ -277,14 +329,23 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
     "io"
   }
 
-  override def pushPos(io: String): Unit =
-    outSrc.puts(s"std::streampos _pos = $io->pos();")
+  override def pushPos(io: String): Unit = {
+    // outSrc.puts(s"uint64_t _pos = $io->pos();")
+  }
 
-  override def seek(io: String, pos: Ast.expr): Unit =
-    outSrc.puts(s"$io->seek(${expression(pos)});")
+  override def seek(io: String, pos: Ast.expr): Unit = {
+    outSrc.puts(s"auto saved_io = $io;")
+    outSrc.puts(s"auto saved_veles_obj = veles_obj;")
+    outSrc.puts(s"$io = new kaitai::kstream(saved_io->blob(), ${expression(pos)}, veles_obj, saved_io->error());")
+    outSrc.puts(s"veles_obj = $io->startChunk(saved_io->currentName());")
+  }
 
-  override def popPos(io: String): Unit =
-    outSrc.puts(s"$io->seek(_pos);")
+  override def popPos(io: String): Unit = {
+    outSrc.puts(s"$io->endChunk();")
+    outSrc.puts(s"delete $io;")
+    outSrc.puts(s"veles_obj = saved_veles_obj;")
+    outSrc.puts(s"$io = saved_io;")
+  }
 
   override def instanceClear(instName: InstanceIdentifier): Unit =
     outSrc.puts(s"${calculatedFlagForName(instName)} = false;")
@@ -310,14 +371,16 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
 
   override def condRepeatEosHeader(id: Identifier, io: String, dataType: BaseType, needRaw: Boolean): Unit = {
     if (needRaw)
-      outSrc.puts(s"${privateMemberName(RawIdentifier(id))} = new std::vector<std::string>();")
+      outSrc.puts(s"${privateMemberName(RawIdentifier(id))} = new std::vector<std::vector<uint8_t>>();")
     outSrc.puts(s"${privateMemberName(id)} = new std::vector<${kaitaiType2NativeType(dataType)}>();")
     outSrc.puts(s"while (!$io->is_eof()) {")
     outSrc.inc
   }
 
   override def handleAssignmentRepeatEos(id: Identifier, expr: String): Unit = {
+    outSrc.puts(s"""$normalIO->pushName(\"${privateMemberName(id).substring(2)}\");""")
     outSrc.puts(s"${privateMemberName(id)}->push_back($expr);")
+    outSrc.puts(s"""$normalIO->popName();""")
   }
 
   override def condRepeatEosFooter: Unit = {
@@ -329,7 +392,7 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
     val lenVar = s"l_${idToStr(id)}"
     outSrc.puts(s"int $lenVar = ${expression(repeatExpr)};")
     if (needRaw) {
-      outSrc.puts(s"${privateMemberName(RawIdentifier(id))} = new std::vector<std::string>();")
+      outSrc.puts(s"${privateMemberName(RawIdentifier(id))} = new std::vector<std::vector<uint8_t>>();")
       outSrc.puts(s"${privateMemberName(RawIdentifier(id))}->reserve($lenVar);")
     }
     outSrc.puts(s"${privateMemberName(id)} = new std::vector<${kaitaiType2NativeType(dataType)}>();")
@@ -339,7 +402,9 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
   }
 
   override def handleAssignmentRepeatExpr(id: Identifier, expr: String): Unit = {
+    outSrc.puts(s"""$normalIO->pushName(\"${privateMemberName(id).substring(2)}\");""")
     outSrc.puts(s"${privateMemberName(id)}->push_back($expr);")
+    outSrc.puts(s"""$normalIO->popName();""")
   }
 
   override def condRepeatExprFooter: Unit = {
@@ -360,7 +425,9 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
 
   override def handleAssignmentRepeatUntil(id: Identifier, expr: String): Unit = {
     outSrc.puts(s"${translator.doName("_")} = $expr;")
+    outSrc.puts(s"""$normalIO->pushName(\"${privateMemberName(id).substring(2)}\");""")
     outSrc.puts(s"${privateMemberName(id)}->push_back(${translator.doName("_")});")
+    outSrc.puts(s"""$normalIO->popName();""")
   }
 
   override def condRepeatUntilFooter(id: Identifier, io: String, dataType: BaseType, needRaw: Boolean, untilExpr: expr): Unit = {
@@ -372,7 +439,9 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
   }
 
   override def handleAssignmentSimple(id: Identifier, expr: String): Unit = {
+    outSrc.puts(s"""$normalIO->pushName(\"${privateMemberName(id).substring(2)}\");""")
     outSrc.puts(s"${privateMemberName(id)} = $expr;")
+    outSrc.puts(s"$normalIO->popName();")
   }
 
   override def parseExpr(dataType: BaseType, io: String): String = {
@@ -486,6 +555,9 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
     outSrc.puts
     outSrc.puts(s"${kaitaiType2NativeType(dataType, true)} ${type2class(className)}::${publicMemberName(instName)}() {")
     outSrc.inc
+    if (className.size == 1) {
+      outMainHdr.puts(s"parser.${instName.name}();");
+    }
   }
 
   override def instanceFooter: Unit = {
@@ -496,11 +568,14 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
   override def instanceCheckCacheAndReturn(instName: InstanceIdentifier): Unit = {
     outSrc.puts(s"if (${calculatedFlagForName(instName)})")
     outSrc.inc
-    instanceReturn(instName)
+//    instanceReturn(instName)
+    outSrc.puts(s"return ${privateMemberName(instName)};")
     outSrc.dec
+    outSrc.puts(s"""$normalIO->pushName("${instName.name}");""")
   }
 
   override def instanceReturn(instName: InstanceIdentifier): Unit = {
+    outSrc.puts(s"$normalIO->popName();")
     outSrc.puts(s"return ${privateMemberName(instName)};")
   }
 
@@ -547,7 +622,7 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
       case CalcFloatType => "double"
 
       case _: StrType => "std::string"
-      case _: BytesType => "std::string"
+      case _: BytesType => "std::vector<uint8_t>"
 
       case t: UserType =>
         val typeStr = type2class(if (absolute) {
@@ -594,7 +669,7 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
 
   override def idToStr(id: Identifier): String = {
     id match {
-      case RawIdentifier(inner) => s"_raw_${idToStr(inner)}"
+      case RawIdentifier(inner) => s"_skip_me_${idToStr(inner)}"
       case IoStorageIdentifier(inner) => s"_io_${idToStr(inner)}"
       case si: SpecialIdentifier => si.name
       case ni: NamedIdentifier => ni.name
@@ -617,8 +692,8 @@ class CppCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outHdr: L
   }
 }
 
-object CppCompiler extends LanguageCompilerStatic with StreamStructNames {
-  override def getTranslator(tp: TypeProvider): BaseTranslator = new CppTranslator(tp)
+object CppVelesCompiler extends LanguageCompilerStatic with StreamStructNames {
+  override def getTranslator(tp: TypeProvider): BaseTranslator = new CppVelesTranslator(tp)
   override def indent: String = "    "
   override def outFileName(topClassName: String): String = topClassName
 

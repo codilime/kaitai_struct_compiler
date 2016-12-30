@@ -140,6 +140,11 @@ object ClassCompiler {
         val outSrc = new FileLanguageOutputWriter(s"$outPath.cpp", lang.indent)
         val outHdr = new FileLanguageOutputWriter(s"$outPath.h", lang.indent)
         new ClassCompiler(topClass, new CppCompiler(config, outSrc, outHdr))
+      case CppVelesCompiler =>
+        val outSrc = new FileLanguageOutputWriter(s"$outPath.cc", lang.indent)
+        val outHdr = new FileLanguageOutputWriter(s"$outPath.h", lang.indent)
+        val outMainHdr = new FileLanguageOutputWriter(s"${outPath}_parser.h", lang.indent)
+        new ClassCompiler(topClass, new CppVelesCompiler(config, outSrc, outHdr, outMainHdr))
       case _ =>
         val out = new FileLanguageOutputWriter(outPath, lang.indent)
         new ClassCompiler(topClass, getCompiler(lang, config, out))
@@ -156,6 +161,12 @@ object ClassCompiler {
         val outSrc = new StringLanguageOutputWriter(lang.indent)
         val outHdr = new StringLanguageOutputWriter(lang.indent)
         val cc = new ClassCompiler(topClass, new CppCompiler(config, outSrc, outHdr))
+        (outSrc, Some(outHdr), cc)
+      case CppVelesCompiler =>
+        val outSrc = new StringLanguageOutputWriter(lang.indent)
+        val outHdr = new StringLanguageOutputWriter(lang.indent)
+        val outMainHdr = new StringLanguageOutputWriter(lang.indent)
+        val cc = new ClassCompiler(topClass, new CppVelesCompiler(config, outSrc, outHdr, outMainHdr))
         (outSrc, Some(outHdr), cc)
       case _ =>
         val out = new StringLanguageOutputWriter(lang.indent)

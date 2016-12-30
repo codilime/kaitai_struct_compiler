@@ -14,6 +14,7 @@ trait LanguageCompilerStatic {
 object LanguageCompilerStatic {
   val NAME_TO_CLASS: Map[String, LanguageCompilerStatic] = Map(
     "cpp_stl" -> CppCompiler,
+    "cpp_veles" -> CppVelesCompiler,
     "csharp" -> CSharpCompiler,
     "graphviz" -> GraphvizClassCompiler,
     "java" -> JavaCompiler,
