@@ -62,6 +62,8 @@ class CppVelesCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outH
     outMainHdr.puts(s"void parse(dbif::ObjectHandle blob, uint64_t start = 0, ")
     outMainHdr.puts(s"dbif::ObjectHandle parent_chunk = dbif::ObjectHandle()) override {")
     outMainHdr.inc
+    outMainHdr.puts(s"try {")
+    outMainHdr.inc
     outMainHdr.puts(s"auto stream = kaitai::kstream(blob, start, parent_chunk);")
     outMainHdr.puts(s"auto parser = kaitai::${topClassName}::${topClassName}_t(&stream);")
     
@@ -78,7 +80,8 @@ class CppVelesCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outH
     outSrc.puts("}  // namespace kaitai")
     outSrc.puts("}  // namespace veles")
     
-    
+    outMainHdr.dec
+    outMainHdr.puts(s"} catch(std::exception &e) {}")
     outMainHdr.dec
     outMainHdr.puts(s"}")
     outMainHdr.dec
