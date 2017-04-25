@@ -191,10 +191,13 @@ trait EveryReadIsExpression extends LanguageCompiler with ObjectOrientedLanguage
     }
 
     // Pass 2: else clause, if it is there
+    var foundElse = false
+
     cases.foreach { case (condition, dataType) =>
       condition match {
         case SwitchType.ELSE_CONST =>
           switchElseStart()
+          foundElse = true
           if (switchBytesOnlyAsRaw) {
             dataType match {
               case t: BytesType =>
@@ -209,6 +212,11 @@ trait EveryReadIsExpression extends LanguageCompiler with ObjectOrientedLanguage
         case _ =>
           // ignore normal case clauses
       }
+    }
+    
+    if (!foundElse) {
+      switchElseStart()
+      switchElseEnd()
     }
 
     switchEnd()
