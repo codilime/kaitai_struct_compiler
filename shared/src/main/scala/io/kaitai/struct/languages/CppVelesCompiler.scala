@@ -82,7 +82,7 @@ class CppVelesCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outH
     outSrc.puts("}  // namespace veles")
     
     outMainHdr.dec
-    outMainHdr.puts(s"} catch(std::exception &e) {}")
+    outMainHdr.puts(s"} catch(std::exception) {}")
     outMainHdr.dec
     outMainHdr.puts(s"}")
     outMainHdr.dec
