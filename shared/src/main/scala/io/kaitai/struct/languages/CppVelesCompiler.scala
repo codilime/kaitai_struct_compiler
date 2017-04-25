@@ -69,14 +69,14 @@ class CppVelesCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outH
 
   override def fileFooter(topClassName: String): Unit = {
     outHdr.puts
-    outHdr.puts("} // namespace " + topClassName)
-    outHdr.puts("} // namespace kaitai")
-    outHdr.puts("} // namespace veles")
+    outHdr.puts("}  // namespace " + topClassName)
+    outHdr.puts("}  // namespace kaitai")
+    outHdr.puts("}  // namespace veles")
     outHdr.puts(s"#endif  // ${defineName(topClassName)}")
     
-    outSrc.puts("} // namespace " + topClassName)
-    outSrc.puts("} // namespace kaitai")
-    outSrc.puts("} // namespace veles")
+    outSrc.puts("}  // namespace " + topClassName)
+    outSrc.puts("}  // namespace kaitai")
+    outSrc.puts("}  // namespace veles")
     
     
     outMainHdr.dec
@@ -84,8 +84,8 @@ class CppVelesCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outH
     outMainHdr.dec
     outMainHdr.puts(s"};")
     outMainHdr.puts
-    outMainHdr.puts("} // namespace kaitai")
-    outMainHdr.puts("} // namespace veles")
+    outMainHdr.puts("}  // namespace kaitai")
+    outMainHdr.puts("}  // namespace veles")
   }
 
   override def opaqueClassDeclaration(classSpec: ClassSpec): Unit = {
