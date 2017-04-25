@@ -76,6 +76,7 @@ class CppVelesCompiler(config: RuntimeConfig, outSrc: LanguageOutputWriter, outH
     outHdr.puts("}  // namespace veles")
     outHdr.puts(s"#endif  // ${defineName(topClassName)}")
     
+    outSrc.puts
     outSrc.puts("}  // namespace " + topClassName)
     outSrc.puts("}  // namespace kaitai")
     outSrc.puts("}  // namespace veles")
